@@ -40,4 +40,35 @@ class LocationService {
   static String formatPosition(Position pos) {
     return '${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}';
   }
+
+  static Future<String?> resolveLocationLabel(String rawLocation) async {
+    final query = rawLocation.trim();
+    if (query.isEmpty) return null;
+
+    try {
+      final locations = await locationFromAddress(query);
+      if (locations.isNotEmpty) {
+        final first = locations.first;
+        final placemarks = await placemarkFromCoordinates(first.latitude, first.longitude);
+        if (placemarks.isNotEmpty) {
+          final place = placemarks.first;
+          final formatted = [
+            place.name,
+            place.street,
+            place.subLocality,
+            place.locality,
+            place.subAdministrativeArea,
+          ].where((part) => part != null && part!.trim().isNotEmpty).map((part) => part!.trim()).toList();
+
+          if (formatted.isNotEmpty) {
+            return formatted.join(', ');
+          }
+        }
+      }
+    } catch (_) {
+      return query;
+    }
+
+    return query;
+  }
 }

@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../services/ai_service.dart';
 import '../services/location_service.dart';
 import '../core/app_theme.dart';
+import '../core/snackbar_utils.dart';
+import '../models/reminder_model.dart';
+import '../providers/auth_provider.dart';
+import '../providers/reminder_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
@@ -75,8 +82,14 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
     try {
       final response = await _chatSession!.sendMessage(Content.text(text));
+      final responseText = response.text ?? 'Gagal memuat respons.';
+      final scheduleDraft = _extractScheduleDraft(responseText);
       setState(() {
-        _messages.add(ChatMessage(text: response.text ?? 'Gagal memuat respons.', isUser: false));
+        _messages.add(ChatMessage(
+          text: responseText,
+          isUser: false,
+          scheduleDraft: scheduleDraft,
+        ));
         _isLoading = false;
       });
       _scrollToBottom();
@@ -87,6 +100,80 @@ class _AIChatScreenState extends State<AIChatScreen> {
       });
       _scrollToBottom();
     }
+  }
+
+  ScheduleDraft? _extractScheduleDraft(String responseText) {
+    final jsonBlockPattern = RegExp(r'```json\s*([\s\S]*?)\s*```', caseSensitive: false);
+    final match = jsonBlockPattern.firstMatch(responseText);
+    if (match == null) return null;
+
+    try {
+      final rawJson = match.group(1)?.trim();
+      if (rawJson == null || rawJson.isEmpty) return null;
+
+      final decoded = json.decode(rawJson);
+      if (decoded is! Map<String, dynamic>) return null;
+
+      final title = (decoded['title'] ?? '').toString().trim();
+      final description = (decoded['description'] ?? '').toString().trim();
+      final date = (decoded['date'] ?? '').toString().trim();
+      final time = (decoded['time'] ?? '').toString().trim();
+      final category = (decoded['category'] ?? '').toString().trim();
+      final location = (decoded['location'] ?? '').toString().trim();
+
+      if (title.isEmpty || date.isEmpty || time.isEmpty || category.isEmpty) {
+        return null;
+      }
+
+      final dateTime = DateTime.tryParse('${date}T$time:00');
+      if (dateTime == null) return null;
+
+      return ScheduleDraft(
+        title: title,
+        description: description,
+        scheduledAt: dateTime,
+        category: category,
+        location: location,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _cleanAssistantText(String responseText) {
+    return responseText.replaceAll(RegExp(r'```json\s*[\s\S]*?\s*```', caseSensitive: false), '').trim();
+  }
+
+  Future<void> _saveScheduleDraft(ScheduleDraft draft) async {
+    final pengguna = Provider.of<AuthProvider>(context, listen: false).penggunaSaatIni;
+    if (pengguna?.id == null) {
+      SnackBarUtils.showError(context, 'Sesi pengguna tidak ditemukan.');
+      return;
+    }
+
+    if (draft.scheduledAt.isBefore(DateTime.now())) {
+      SnackBarUtils.showError(context, 'Jadwal dari AI berada di masa lalu. Minta AI buat ulang.');
+      return;
+    }
+
+    final resolvedLocation = draft.location.trim().isEmpty
+        ? null
+        : await LocationService.resolveLocationLabel(draft.location);
+
+    final pengingat = Pengingat(
+      idPengguna: pengguna!.id!,
+      judul: draft.title,
+      deskripsi: draft.description.isEmpty ? 'Dibuat dari rekomendasi AI.' : draft.description,
+      waktu: DateTime.now(),
+      deadline: draft.scheduledAt,
+      kategori: draft.category,
+      lokasi: resolvedLocation,
+    );
+
+    await Provider.of<PengingatProvider>(context, listen: false).tambahPengingat(pengingat);
+
+    if (!mounted) return;
+    SnackBarUtils.showSuccess(context, 'Jadwal AI berhasil ditambahkan ke beranda.');
   }
 
   void _scrollToBottom() {
@@ -252,6 +339,32 @@ class _AIChatScreenState extends State<AIChatScreen> {
         );
       }
     }
+
+    if (!msg.isUser && msg.scheduleDraft != null) {
+      final cleanText = _cleanAssistantText(msg.text);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (cleanText.isNotEmpty)
+            MarkdownBody(
+              data: cleanText,
+              styleSheet: MarkdownStyleSheet(
+                p: const TextStyle(
+                  color: AppTheme.onSurface,
+                  fontSize: 15,
+                  height: 1.4,
+                ),
+              ),
+              selectable: true,
+            ),
+          if (cleanText.isNotEmpty) const SizedBox(height: 12),
+          _ScheduleDraftCard(
+            draft: msg.scheduleDraft!,
+            onSave: () => _saveScheduleDraft(msg.scheduleDraft!),
+          ),
+        ],
+      );
+    }
     
     return MarkdownBody(
       data: msg.text,
@@ -277,5 +390,95 @@ class _AIChatScreenState extends State<AIChatScreen> {
 class ChatMessage {
   final String text;
   final bool isUser;
-  ChatMessage({required this.text, required this.isUser});
+  final ScheduleDraft? scheduleDraft;
+
+  ChatMessage({
+    required this.text,
+    required this.isUser,
+    this.scheduleDraft,
+  });
+}
+
+class ScheduleDraft {
+  final String title;
+  final String description;
+  final DateTime scheduledAt;
+  final String category;
+  final String location;
+
+  ScheduleDraft({
+    required this.title,
+    required this.description,
+    required this.scheduledAt,
+    required this.category,
+    required this.location,
+  });
+}
+
+class _ScheduleDraftCard extends StatelessWidget {
+  final ScheduleDraft draft;
+  final VoidCallback onSave;
+
+  const _ScheduleDraftCard({
+    required this.draft,
+    required this.onSave,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.secondary.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.secondary.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.event_note, color: AppTheme.secondary),
+              SizedBox(width: 8),
+              Text(
+                'Draft Jadwal dari AI',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.secondary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(draft.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          if (draft.description.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(draft.description, style: TextStyle(color: AppTheme.onSurface.withOpacity(0.75))),
+          ],
+          const SizedBox(height: 10),
+          Text('Kategori: ${draft.category}', style: const TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          if (draft.location.trim().isNotEmpty) ...[
+            Text('Lokasi: ${draft.location}', style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+          ],
+          Text(
+            'Jadwal: ${DateFormat('dd MMM yyyy, HH:mm').format(draft.scheduledAt)}',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: onSave,
+              icon: const Icon(Icons.save_outlined),
+              label: const Text('Tambahkan ke Beranda'),
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.secondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

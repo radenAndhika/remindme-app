@@ -14,6 +14,7 @@ void main() {
         deskripsi: 'Menulis unit test untuk Flutter',
         waktu: waktu,
         deadline: deadline,
+        kategori: 'Revisi/Laporan',
         lokasi: 'Yogyakarta',
         sudahSelesai: false,
       );
@@ -25,6 +26,9 @@ void main() {
       expect(map['title'], 'Belajar TDD');
       expect(map['dateTime'], waktu.toIso8601String());
       expect(map['deadline'], deadline.toIso8601String());
+      expect(map['category'], 'Revisi/Laporan');
+      expect(map['priorityScore'], isA<int>());
+      expect(map['priorityLabel'], isA<String>());
       expect(map['isCompleted'], 0);
     });
 
@@ -39,15 +43,20 @@ void main() {
         'description': 'Testing factory method',
         'dateTime': waktuStr,
         'deadline': deadlineStr,
+        'category': 'Administrasi',
         'location': 'Jakarta',
         'isCompleted': 1,
+        'priorityScore': 63,
+        'priorityLabel': 'Sedang',
       };
 
       final pengingat = Pengingat.fromMap(map);
 
       expect(pengingat.id, 2);
       expect(pengingat.judul, 'Test From Map');
+      expect(pengingat.kategori, 'Administrasi');
       expect(pengingat.sudahSelesai, true);
+      expect(pengingat.priorityLabel, 'Sedang');
       expect(pengingat.deadline, isNotNull);
       expect(pengingat.deadline!.toIso8601String(), deadlineStr);
     });

@@ -22,6 +22,15 @@ class _ConversionScreenState extends State<ConversionScreen> {
   String _toCurrency = 'IDR';
   bool _isLoading = false;
 
+  void _swapCurrencies() {
+    setState(() {
+      final previousFrom = _fromCurrency;
+      _fromCurrency = _toCurrency;
+      _toCurrency = previousFrom;
+    });
+    _convertCurrency();
+  }
+
   Future<void> _convertCurrency() async {
     double amount = double.tryParse(_amountController.text) ?? 0;
     if (amount <= 0) {
@@ -108,7 +117,11 @@ class _ConversionScreenState extends State<ConversionScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       _buildCurrencyPicker(_fromCurrency, (val) => setState(() { _fromCurrency = val!; _convertCurrency(); })),
-                      const Icon(Icons.swap_horiz, color: AppTheme.outline),
+                      IconButton(
+                        tooltip: 'Tukar mata uang',
+                        onPressed: _swapCurrencies,
+                        icon: const Icon(Icons.swap_horiz, color: AppTheme.outline),
+                      ),
                       _buildCurrencyPicker(_toCurrency, (val) => setState(() { _toCurrency = val!; _convertCurrency(); })),
                     ],
                   ),

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/app_theme.dart';
 
 class MiniGameScreen extends StatefulWidget {
@@ -12,15 +13,47 @@ class MiniGameScreen extends StatefulWidget {
 }
 
 class _MiniGameScreenState extends State<MiniGameScreen> {
+  static const int _maxMissedItems = 5;
+
   int _score = 0;
+  int _highScore = 0;
+  int _missedItems = 0;
   double _playerX = 0;
   List<Point> _items = [];
   Timer? _timer;
   bool _isPlaying = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _loadHighScore();
+  }
+
+  Future<void> _loadHighScore() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _highScore = prefs.getInt('mini_game_high_score') ?? 0;
+    });
+  }
+
+  Future<void> _saveHighScoreIfNeeded() async {
+    if (_score <= _highScore) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('mini_game_high_score', _score);
+    if (!mounted) return;
+    setState(() {
+      _highScore = _score;
+    });
+  }
+
   void _startGame() {
+    _timer?.cancel();
     setState(() {
       _score = 0;
+      _missedItems = 0;
+      _playerX = 0;
       _items = [];
       _isPlaying = true;
     });
@@ -30,6 +63,10 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
   }
 
   void _updateGame() {
+    if (!_isPlaying) return;
+
+    var missedThisTick = 0;
+
     setState(() {
       for (var item in _items) {
         item.y += 0.02;
@@ -40,12 +77,31 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
           _score++;
           return true;
         }
-        return item.y > 1.0;
+        if (item.y > 1.0) {
+          missedThisTick++;
+          return true;
+        }
+        return false;
       });
+
+      _missedItems += missedThisTick;
 
       if (Random().nextDouble() < 0.05) {
         _items.add(Point(Random().nextDouble() * 2 - 1, -1.0));
       }
+    });
+
+    if (_missedItems >= _maxMissedItems) {
+      _endGame();
+    }
+  }
+
+  void _endGame() {
+    _timer?.cancel();
+    _saveHighScoreIfNeeded();
+    if (!mounted) return;
+    setState(() {
+      _isPlaying = false;
     });
   }
 
@@ -90,12 +146,30 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
                       const SizedBox(height: 20),
                       Text('Collect the Bolts!', style: Theme.of(context).textTheme.headlineMedium),
                       const SizedBox(height: 10),
-                      Text('Catch them to stay focused.', style: TextStyle(color: AppTheme.onSurface.withOpacity(0.5))),
+                      Text(
+                        _score > 0 || _missedItems > 0
+                            ? 'Game over. Skor kamu $_score.'
+                            : 'Catch them to stay focused.',
+                        style: TextStyle(color: AppTheme.onSurface.withOpacity(0.5)),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'High Score: $_highScore',
+                        style: const TextStyle(
+                          color: AppTheme.secondary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Maksimal petir lolos: $_maxMissedItems',
+                        style: TextStyle(color: AppTheme.onSurface.withOpacity(0.5)),
+                      ),
                       const SizedBox(height: 30),
                       ElevatedButton(
                         onPressed: _startGame,
                         style: ElevatedButton.styleFrom(backgroundColor: AppTheme.secondary),
-                        child: const Text('Start Focus Session'),
+                        child: Text(_score > 0 || _missedItems > 0 ? 'Main Lagi' : 'Start Focus Session'),
                       ),
                     ],
                   ),
@@ -112,6 +186,28 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
                         fontSize: 60,
                         fontWeight: FontWeight.w900,
                         color: AppTheme.primary.withOpacity(0.1),
+                      ),
+                    ),
+                  ),
+                ),
+              if (_isPlaying)
+                Positioned(
+                  top: 92,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        'Terlewat: $_missedItems/$_maxMissedItems  •  High Score: $_highScore',
+                        style: const TextStyle(
+                          color: AppTheme.onSurface,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),

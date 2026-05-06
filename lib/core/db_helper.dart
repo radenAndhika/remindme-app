@@ -22,7 +22,7 @@ class DatabaseHelper {
       return await databaseFactoryFfiWeb.openDatabase(
         filePath,
         options: OpenDatabaseOptions(
-          version: 2,
+          version: 3,
           onCreate: _createDB,
           onUpgrade: _onUpgrade,
         ),
@@ -35,7 +35,7 @@ class DatabaseHelper {
       return await databaseFactoryFfi.openDatabase(
         join(dbPath, filePath),
         options: OpenDatabaseOptions(
-          version: 2,
+          version: 3,
           onCreate: _createDB,
           onUpgrade: _onUpgrade,
         ),
@@ -47,7 +47,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -56,6 +56,11 @@ class DatabaseHelper {
   Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('ALTER TABLE reminders ADD COLUMN deadline TEXT');
+    }
+    if (oldVersion < 3) {
+      await db.execute("ALTER TABLE reminders ADD COLUMN category TEXT DEFAULT 'Umum'");
+      await db.execute('ALTER TABLE reminders ADD COLUMN priorityScore INTEGER DEFAULT 10');
+      await db.execute("ALTER TABLE reminders ADD COLUMN priorityLabel TEXT DEFAULT 'Rendah'");
     }
   }
 
@@ -80,6 +85,9 @@ class DatabaseHelper {
         location TEXT,
         isCompleted INTEGER DEFAULT 0,
         deadline TEXT,
+        category TEXT DEFAULT 'Umum',
+        priorityScore INTEGER DEFAULT 10,
+        priorityLabel TEXT DEFAULT 'Rendah',
         FOREIGN KEY (userId) REFERENCES users (id)
       )
     ''');
