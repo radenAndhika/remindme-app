@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../core/password_validator.dart';
 import '../providers/auth_provider.dart';
 import '../core/app_theme.dart';
 import '../core/snackbar_utils.dart';
@@ -16,6 +17,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLogin = true;
+  bool _obscurePassword = true;
 
   @override
   void initState() {
@@ -29,11 +31,25 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _submit() async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text;
+
+    if (username.isEmpty) {
+      SnackBarUtils.showError(context, 'Nama pengguna tidak boleh kosong.');
+      return;
+    }
+
     bool success;
     if (_isLogin) {
-      success = await auth.masuk(_usernameController.text, _passwordController.text);
+      success = await auth.masuk(username, password);
     } else {
-      success = await auth.daftar(_usernameController.text, _passwordController.text);
+      final passwordError = PasswordValidator.validate(password);
+      if (passwordError != null) {
+        SnackBarUtils.showError(context, passwordError);
+        return;
+      }
+
+      success = await auth.daftar(username, password);
       if (success) {
         setState(() => _isLogin = true);
         SnackBarUtils.showSuccess(context, 'Pendaftaran berhasil! Silakan masuk.');
@@ -47,7 +63,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } else {
       if (mounted) {
-        SnackBarUtils.showError(context, 'Autentikasi gagal!');
+        SnackBarUtils.showError(context, auth.pesanAutentikasi ?? 'Autentikasi gagal!');
       }
     }
   }
@@ -110,12 +126,73 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 15),
                 TextField(
                   controller: _passwordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
+                  obscureText: _obscurePassword,
+                  onChanged: (_) {
+                    if (!_isLogin) {
+                      setState(() {});
+                    }
+                  },
+                  decoration: InputDecoration(
                     hintText: 'Kata Sandi',
-                    prefixIcon: Icon(Icons.lock_outline, color: AppTheme.primary),
+                    prefixIcon: const Icon(Icons.lock_outline, color: AppTheme.primary),
+                    suffixIcon: IconButton(
+                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                      icon: Icon(
+                        _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                        color: AppTheme.outline,
+                      ),
+                    ),
                   ),
                 ),
+                if (!_isLogin) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: AppTheme.primary.withOpacity(0.12),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.verified_user_outlined, size: 18, color: AppTheme.primary),
+                            SizedBox(width: 8),
+                            Text(
+                              'Syarat Password',
+                              style: TextStyle(
+                                color: AppTheme.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        _PasswordRule(
+                          text: 'Minimal 8 karakter',
+                          passed: _passwordController.text.length >= 8,
+                        ),
+                        _PasswordRule(
+                          text: 'Memiliki huruf besar',
+                          passed: RegExp(r'[A-Z]').hasMatch(_passwordController.text),
+                        ),
+                        _PasswordRule(
+                          text: 'Memiliki huruf kecil',
+                          passed: RegExp(r'[a-z]').hasMatch(_passwordController.text),
+                        ),
+                        _PasswordRule(
+                          text: 'Memiliki simbol',
+                          passed: RegExp(r'[^A-Za-z0-9]').hasMatch(_passwordController.text),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 30),
                 SizedBox(
                   width: double.infinity,
@@ -126,7 +203,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 30),
-                if (_isLogin) ...[
+                if (_isLogin && context.watch<AuthProvider>().biometrikSiapLogin) ...[
                   GestureDetector(
                     onTap: _biometricLogin,
                     child: Container(
@@ -158,6 +235,43 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _PasswordRule extends StatelessWidget {
+  final String text;
+  final bool passed;
+
+  const _PasswordRule({
+    required this.text,
+    required this.passed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = passed ? AppTheme.secondary : AppTheme.onSurface.withOpacity(0.55);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Icon(
+            passed ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+            size: 16,
+            color: color,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: passed ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }

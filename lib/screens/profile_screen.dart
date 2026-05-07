@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../providers/auth_provider.dart';
 import '../core/app_theme.dart';
+import '../core/snackbar_utils.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -141,12 +142,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           children: [
                             const Text('Aktifkan biometrik untuk masuk ke aplikasi tanpa kata sandi.'),
                             const SizedBox(height: 20),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primary.withOpacity(0.06),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: const Text(
+                                'Biometrik hanya bisa didaftarkan setelah kamu login. Saat diaktifkan, aplikasi akan meminta verifikasi biometrik satu kali untuk mendaftarkan login cepat.',
+                                style: TextStyle(fontSize: 13),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
                             SwitchListTile(
                               title: const Text('Gunakan Biometrik'),
                               value: auth.biometrikAktif,
                               activeColor: AppTheme.primary,
                               onChanged: (val) async {
-                                await auth.setelBiometrik(val);
+                                final message = await auth.setelBiometrik(val);
+                                if (!mounted) return;
+                                if (message == null) {
+                                  SnackBarUtils.showSuccess(
+                                    context,
+                                    val
+                                        ? 'Biometrik berhasil didaftarkan untuk login berikutnya.'
+                                        : 'Biometrik berhasil dinonaktifkan.',
+                                  );
+                                } else {
+                                  SnackBarUtils.showError(context, message);
+                                }
                                 setDialogState(() {});
                               },
                             ),

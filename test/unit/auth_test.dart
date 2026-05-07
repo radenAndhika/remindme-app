@@ -22,12 +22,15 @@ void main() {
       expect(authProvider.penggunaSaatIni, isNull);
     });
 
-    test('Biometric setting should persist in memory', () async {
-      await authProvider.setelBiometrik(true);
-      expect(authProvider.biometrikAktif, true);
-      
-      await authProvider.setelBiometrik(false);
+    test('Disabling biometric should persist in memory', () async {
+      await authProvider.nonaktifkanBiometrik();
       expect(authProvider.biometrikAktif, false);
+    });
+
+    test('Register should reject weak password', () async {
+      final result = await authProvider.daftar('andhika', '111');
+      expect(result, false);
+      expect(authProvider.pesanAutentikasi, isNotNull);
     });
   });
 }

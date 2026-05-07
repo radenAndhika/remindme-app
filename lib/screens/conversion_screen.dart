@@ -46,8 +46,17 @@ class _ConversionScreenState extends State<ConversionScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final response = await http.get(Uri.parse(
-          'https://api.frankfurter.app/latest?amount=$amount&from=$_fromCurrency&to=$_toCurrency'));
+      final response = await http.get(
+        Uri.https(
+          'api.frankfurter.dev',
+          '/v1/latest',
+          {
+            'amount': amount.toString(),
+            'base': _fromCurrency,
+            'symbols': _toCurrency,
+          },
+        ),
+      );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
