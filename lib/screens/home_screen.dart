@@ -13,6 +13,7 @@ import '../services/notification_service.dart';
 import '../services/task_priority_service.dart';
 import '../core/app_theme.dart';
 import '../core/snackbar_utils.dart';
+import '../services/ai_service.dart';
 import 'ai_chat_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -63,6 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
     String lokasiStr = 'Mengambil lokasi...';
     DateTime? selectedDeadline;
     String selectedCategory = TaskPriorityService.categories.first;
+    bool isAnalyzing = false;
     
     showDialog(
       context: context,
@@ -183,57 +185,56 @@ class _HomeScreenState extends State<HomeScreen> {
             actions: [
               TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
               ElevatedButton(
-                  onPressed: () async {
+                  onPressed: isAnalyzing ? null : () async {
                   if (judulController.text.isEmpty) {
                     SnackBarUtils.showError(context, 'Judul tidak boleh kosong!');
                     return;
                   }
-
-                  // Guard: reject past deadlines before saving
                   if (selectedDeadline != null && selectedDeadline!.isBefore(DateTime.now())) {
                     SnackBarUtils.showError(context, 'Tenggat waktu tidak boleh di masa lalu!');
                     return;
                   }
-                  
+                  setDialogState(() => isAnalyzing = true);
                   try {
-                    final selectedDate = DateTime.now().add(const Duration(seconds: 10));
+                    final priority = await AIService.analyzePriority(
+                      title: judulController.text,
+                      description: deskripsiController.text,
+                      category: selectedCategory,
+                      deadline: selectedDeadline,
+                    );
                     final pengingat = Pengingat(
                       idPengguna: idPengguna,
                       judul: judulController.text,
                       deskripsi: deskripsiController.text,
-                      waktu: selectedDate,
+                      waktu: DateTime.now().add(const Duration(seconds: 10)),
                       kategori: selectedCategory,
                       lokasi: lokasiStr == 'Mengambil lokasi...' ? 'Lokasi tidak diketahui' : lokasiStr,
                       deadline: selectedDeadline,
+                      priorityScore: priority.score,
+                      priorityLabel: priority.label,
                     );
-                    
                     await Provider.of<PengingatProvider>(context, listen: false).tambahPengingat(pengingat);
-                    
-                    final notificationId = Random().nextInt(1000);
                     try {
-                      // Deadline notification — only if deadline is still in the future
                       if (selectedDeadline != null && selectedDeadline!.isAfter(DateTime.now())) {
                         final msg = await NotificationService.scheduleDeadlineNotifications(
-                          id: notificationId + 2000,
+                          id: Random().nextInt(1000) + 2000,
                           title: judulController.text,
                           deadline: selectedDeadline!,
                         );
-                        if (mounted) {
-                          SnackBarUtils.showSuccess(context, msg);
-                        }
+                        if (mounted) SnackBarUtils.showSuccess(context, msg);
                       }
                     } catch (e) {
                       debugPrint('Gagal menampilkan notifikasi: $e');
                     }
-                    
                     if (mounted) Navigator.pop(ctx);
                   } catch (e) {
-                    if (mounted) {
-                      SnackBarUtils.showError(context, 'Gagal menambahkan tugas: $e');
-                    }
+                    setDialogState(() => isAnalyzing = false);
+                    if (mounted) SnackBarUtils.showError(context, 'Gagal menambahkan tugas: $e');
                   }
                 },
-                child: const Text('Buat'),
+                child: isAnalyzing
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text('Buat'),
               ),
             ],
           );
@@ -461,7 +462,7 @@ class _ReminderCard extends StatelessWidget {
                 ),
                 _InfoChip(
                   icon: Icons.auto_graph,
-                  text: 'Prioritas ${pengingat.priorityLabel} (${pengingat.priorityScore})',
+                  text: 'Prioritas ${pengingat.priorityLabel}',
                   color: _priorityColor(),
                 ),
               ],
